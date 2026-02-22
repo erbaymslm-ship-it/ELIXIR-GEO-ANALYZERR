@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # ELIXIR TECHNOLOGY
 
 Python + Kivy ile geliştirilmiş, Bluetooth Classic üzerinden Arduino sensör verilerini okuyan, 2D/3D yer altı görüntüleme ve gerçek zamanlı pointer modu içeren Android uygulaması.
@@ -45,3 +46,7 @@ venv\Scripts\activate     # Windows
 
 # Bağımlılıkları yükle
 pip install -r requirements.txt
+=======
+# ELIXIR-GEO-ANALYZER
+ELIXIR Technology - Advanced Geophysical Data Analysis &amp; Visualization System for Gradiometers.
+>>>>>>> baf120d20f20ad01d24d33f071fd40d3cb187c47
