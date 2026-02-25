@@ -2,14 +2,14 @@ name: Android Build
 
 on:
   push:
-    branches: [ main, master ]
+    branches: [ "main", "master" ]
   pull_request:
-    branches: [ main, master ]
-  workflow_dispatch:  # manuel çalıştırmaya izin verir
+    branches: [ "main", "master" ]
+  workflow_dispatch:   # manuel tetikleme için
 
 jobs:
   build:
-    runs-on: ubuntu-22.04  # 24.04 yerine 22.04 kullan
+    runs-on: ubuntu-22.04   # libtinfo5 sorununu çözer
 
     steps:
       - name: Checkout repository
@@ -18,7 +18,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.11'  # veya 3.10, 3.12
+          python-version: '3.11'   # Python sürümü (3.11 önerilir)
 
       - name: Install system dependencies
         run: |
@@ -47,14 +47,13 @@ jobs:
 
       - name: Build APK with Buildozer
         run: |
-          # Proje kök dizinine git (buildozer.spec'in olduğu yer)
           cd ${{ github.workspace }}
-          # Buildozer'ı çalıştır
+          # Eğer buildozer.spec farklı bir klasördeyse, örn. cd app
           buildozer android debug
 
-      - name: Upload APK artifact
+      - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: app-debug
+          name: elixir-app-debug
           path: bin/*.apk
           if-no-files-found: error
