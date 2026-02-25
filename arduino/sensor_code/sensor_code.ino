@@ -1,26 +1,16 @@
-/*
-ELIXIR TECHNOLOGY
-Arduino Sensör Kodu - Verilen kod aynen kullanılacak
-*/
-
-// Sensör pin tanımlamaları
-const int sensorPin = A0;  // Analog sensör girişi
-
 void setup() {
-  // Seri haberleşme başlat (9600 baud)
   Serial.begin(9600);
-  
-  // Başlangıç mesajı
-  Serial.println("ELIXIR SENSOR READY");
+  pinMode(LED_BUILTIN, OUTPUT);
 }
 
 void loop() {
-  // Sensörden analog değer oku (0-1023)
-  int sensorValue = analogRead(sensorPin);
+  int deger = analogRead(A0);
+  Serial.println(deger);
   
-  // Değeri seri porta gönder (integer olarak)
-  Serial.println(sensorValue);
-  
-  // Kısa bekleme
+  if (deger > 100) {
+    digitalWrite(LED_BUILTIN, HIGH);
+  } else {
+    digitalWrite(LED_BUILTIN, LOW);
+  }
   delay(100);
 }

@@ -25,10 +25,13 @@ class DataIO:
             self.store = JsonStore(store_path)
     
     def _get_base_path(self):
-        """Platforma göre temel dizin"""
+        """Platforma gore temel dizin"""
         if platform == 'android':
-            from android.storage import primary_external_storage_path
-            return primary_external_storage_path()
+            try:
+                from android.storage import primary_external_storage_path
+                return primary_external_storage_path()
+            except ImportError:
+                return os.path.expanduser('~')
         elif platform == 'win':
             return os.path.expanduser('~\\Documents')
         else:
@@ -131,47 +134,33 @@ class DataIO:
         
         return data
     
+    def get_example_csv_path(self):
+        assets_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'assets')
+        example_path = os.path.join(assets_dir, 'ornek_veri.csv')
+        if os.path.exists(example_path):
+            return example_path
+        return None
+
+    def get_csv_files(self):
+        files = []
+
+        example_path = self.get_example_csv_path()
+        if example_path:
+            files.append({'name': 'Ornek Veri (ornek_veri.csv)', 'path': example_path})
+
+        try:
+            if self.base_path and os.path.exists(self.base_path):
+                for f in sorted(os.listdir(self.base_path), reverse=True):
+                    if f.endswith('.csv'):
+                        full_path = os.path.join(self.base_path, f)
+                        files.append({'name': f, 'path': full_path})
+        except Exception as e:
+            Logger.error(f"CSV dosya listeleme hatasi: {e}")
+
+        return files
+
     def select_csv_file(self):
-        """
-        CSV dosyası seçme dialog'u
-        
-        Returns:
-            str: Seçilen dosya yolu veya None
-        """
-        # Android'de file chooser kullan
-        if platform == 'android':
-            from android.activity import result_callback
-            from android import activity
-            import android.content.Intent as Intent
-            import android.net.Uri as Uri
-            
-            intent = Intent(Intent.ACTION_GET_CONTENT)
-            intent.setType("text/csv")
-            intent.addCategory(Intent.CATEGORY_OPENABLE)
-            
-            # Result callback
-            def on_activity_result(request_code, result_code, intent):
-                if result_code == activity.RESULT_OK and intent:
-                    uri = intent.getData()
-                    # URI'den dosya yolunu al
-                    # Not: Android'de content:// URI'leri için özel işlem gerekir
-                    return uri.getPath()
-                return None
-            
-            result_callback(on_activity_result)
-            activity.startActivityForResult(intent, 1001)
-            return None
-        else:
-            # Geliştirme ortamında simüle et
-            import tkinter as tk
-            from tkinter import filedialog
-            
-            root = tk.Tk()
-            root.withdraw()
-            
-            filepath = filedialog.askopenfilename(
-                title="CSV Dosyası Seç",
-                filetypes=[("CSV files", "*.csv")]
-            )
-            
-            return filepath if filepath else None
+        csv_files = self.get_csv_files()
+        if csv_files:
+            return csv_files[0]['path']
+        return None
