@@ -1,38 +1,26 @@
-# bluetooth_manager.py
-
-from kivy.utils import platform
-from kivy.logger import Logger
+# -*- coding: utf-8 -*-
 import time
+from kivy.logger import Logger
+from kivy.utils import platform
+from plyer import bluetooth
 
-# Android'e özel izin kütüphanesi
+# Android'e özel izin yönetimi
 if platform == 'android':
-    from android.permissions import request_permissions, check_permission, Permission
+    from android.permissions import request_permissions, Permission, check_permission
     from android import api_version
-    from jnius import autoclass
-
-    # Android Bluetooth sınıfları
-    BluetoothAdapter = autoclass('android.bluetooth.BluetoothAdapter')
-    BluetoothDevice = autoclass('android.bluetooth.BluetoothDevice')
-    UUID = autoclass('java.util.UUID')
-else:
-    # Diğer platformlar için sahte sınıflar (opsiyonel)
-    BluetoothAdapter = None
-    BluetoothDevice = None
-    UUID = None
 
 class BluetoothManager:
     def __init__(self):
-        self.adapter = None
-        self.device = None
+        self.connected_device = None
         self.socket = None
-        self.connected = False
+        self.buffer = b''
 
     def check_permissions(self):
-        """Android'de izinleri kontrol et ve iste."""
+        """Android'de Bluetooth izinlerini kontrol et ve iste."""
         if platform != 'android':
             return True
 
-        # Android 12+ için farklı izinler
+        # Android 12+ (API 31+) için yeni izinler
         if api_version >= 31:
             permissions = [
                 Permission.BLUETOOTH_SCAN,
@@ -48,99 +36,98 @@ class BluetoothManager:
                 Permission.ACCESS_COARSE_LOCATION
             ]
 
-        # İzinleri iste
+        # İzinleri iste (asenkron, hemen döner)
         request_permissions(permissions)
         
-        # İzinlerin verilip verilmediğini kontrol et (basit)
-        for p in permissions:
-            if not check_permission(p):
-                Logger.warning(f"BluetoothManager: {p} izni verilmemiş!")
+        # İzinlerin verilip verilmediğini kontrol et (kısa bir bekleme ile)
+        time.sleep(0.5)  # izin dialogunun görünmesi için kısa bekleme
+        for perm in permissions:
+            if not check_permission(perm):
+                Logger.warning(f"BluetoothManager: {perm} izni verilmemiş!")
                 return False
         return True
 
-    def enable_bluetooth(self):
-        """Bluetooth'u aç (kullanıcı onayı gerektirebilir)."""
-        if platform != 'android':
-            return False
-        adapter = BluetoothAdapter.getDefaultAdapter()
-        if not adapter.isEnabled():
-            # Kullanıcıya Bluetooth açma isteği gönder
-            adapter.enable()  # Bu direkt açar, bazı cihazlarda çalışmaz; intent kullanmak daha iyi
-            # Alternatif: Intent ile açma (daha karmaşık)
-            return False
-        return True
-
-    def connect(self, mac_address):
-        """Belirtilen MAC adresine bağlan."""
-        if not self.check_permissions():
-            Logger.error("BluetoothManager: İzinler yok, bağlanılamıyor")
-            return False
-
-        if platform != 'android':
-            Logger.error("BluetoothManager: Sadece Android'de çalışır")
-            return False
-
-        adapter = BluetoothAdapter.getDefaultAdapter()
-        if not adapter:
-            Logger.error("BluetoothManager: Bluetooth adaptörü yok")
-            return False
-
-        if not adapter.isEnabled():
-            Logger.info("BluetoothManager: Bluetooth kapalı, açılıyor...")
-            # Basitçe açmayı dene (kullanıcı onayı gerekebilir)
-            adapter.enable()
-            time.sleep(2)  # açılmasını bekle
-
-        # Cihazı al
-        device = adapter.getRemoteDevice(mac_address)
-        if not device:
-            Logger.error(f"BluetoothManager: {mac_address} adresinde cihaz bulunamadı")
-            return False
-
-        # UUID (SPP için standart UUID)
-        spp_uuid = UUID.fromString("00001101-0000-1000-8000-00805F9B34FB")
-        
+    def get_paired_devices(self):
+        """Eşleştirilmiş cihazların listesini döndürür."""
+        if platform == 'android' and not self.check_permissions():
+            return []
         try:
+            devices = bluetooth.get_paired_devices()
+            return devices
+        except Exception as e:
+            Logger.error(f"BluetoothManager: Cihazlar alınamadı - {e}")
+            return []
+
+    def connect(self, address, uuid="00001101-0000-1000-8000-00805f9b34fb"):
+        """
+        Belirtilen adrese (MAC) ve UUID'ye göre Bluetooth bağlantısı kurar.
+        UUID: SPP (Serial Port Profile) için standart UUID.
+        """
+        if platform == 'android' and not self.check_permissions():
+            Logger.error("BluetoothManager: İzinler yok, bağlantı kurulamaz.")
+            return False
+
+        try:
+            device = bluetooth.get_device(address)
+            if not device:
+                Logger.error(f"BluetoothManager: {address} adresinde cihaz bulunamadı.")
+                return False
+
             # Socket oluştur ve bağlan
-            socket = device.createRfcommSocketToServiceRecord(spp_uuid)
-            socket.connect()
-            self.socket = socket
-            self.device = device
-            self.connected = True
-            Logger.info(f"BluetoothManager: {mac_address} bağlantı başarılı")
+            self.socket = device.create_rfcomm_socket(uuid)
+            self.socket.connect()
+            self.connected_device = device
+            Logger.info(f"BluetoothManager: {address} bağlantı başarılı.")
             return True
         except Exception as e:
-            Logger.error(f"BluetoothManager: Bağlantı hatası: {e}")
+            Logger.error(f"BluetoothManager: Bağlantı hatası - {e}")
             return False
 
     def disconnect(self):
+        """Bağlantıyı kapat."""
         if self.socket:
             try:
                 self.socket.close()
             except:
                 pass
             self.socket = None
-        self.connected = False
+            self.connected_device = None
+            Logger.info("BluetoothManager: Bağlantı kapatıldı.")
 
     def send(self, data):
-        if not self.connected or not self.socket:
+        """Veri gönder (string veya bytes)."""
+        if not self.socket:
+            Logger.error("BluetoothManager: Bağlantı yok, gönderilemez.")
             return False
         try:
-            self.socket.getOutputStream().write(data.encode())
+            if isinstance(data, str):
+                data = data.encode('utf-8')
+            self.socket.send(data)
             return True
         except Exception as e:
-            Logger.error(f"BluetoothManager: Gönderme hatası: {e}")
+            Logger.error(f"BluetoothManager: Gönderme hatası - {e}")
             return False
 
-    def receive(self, buffer_size=1024):
-        if not self.connected or not self.socket:
+    def receive(self, num_bytes=1024):
+        """Veri al. Gelen veriyi tamponda biriktirir, satır satır döndürür."""
+        if not self.socket:
             return None
         try:
-            input_stream = self.socket.getInputStream()
-            if input_stream.available() > 0:
-                data = input_stream.read(buffer_size)
-                return data
-            return None
+            data = self.socket.recv(num_bytes)
+            if not data:
+                return None
+            self.buffer += data
+            # Satır sonu ('\n') gelene kadar bekle, sonra satırları ayır
+            if b'\n' in self.buffer:
+                lines = self.buffer.split(b'\n')
+                # Son satır eksik olabilir, tamponda bırak
+                self.buffer = lines[-1]
+                for line in lines[:-1]:
+                    if line:
+                        yield line.decode('utf-8', errors='replace')
         except Exception as e:
-            Logger.error(f"BluetoothManager: Okuma hatası: {e}")
+            Logger.error(f"BluetoothManager: Alma hatası - {e}")
             return None
+
+    def is_connected(self):
+        return self.socket is not None
